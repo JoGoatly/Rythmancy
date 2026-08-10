@@ -1,0 +1,604 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+using TMPro;
+using RhythmWitchClone.Core;
+using RhythmWitchClone.Save;
+using RhythmWitchClone.Levels;
+using RhythmWitchClone.Audio;
+
+namespace RhythmWitchClone.Gameplay
+{
+    /// <summary>
+    /// Bewegt den Spieler per WASD (bzw. Pfeiltasten) auf der Boden-Ebene (X/Z-Achse),
+    /// spiegelt das Charakterbild horizontal je nach Laufrichtung und verwaltet die Gesundheit
+    /// inkl. optionaler HP-Anzeige. Der Game-Over-Bildschirm selbst wird vom PauseMenuController
+    /// verwaltet (der beobachtet CurrentHealth) - so bleibt dieses Script auf reine
+    /// Spieler-Mechanik fokussiert, ohne UI-Overlay-Logik.
+    ///
+    /// Setup:
+    /// - Kommt auf das Spieler-Root-GameObject (bekommt automatisch einen CharacterController).
+    /// - "Visual Transform" zeigt auf das Kind-Objekt mit dem Quad + BillboardSprite-Script.
+    /// - HP-Anzeige (Health Slider / Health Text) ist optional - im Canvas selbst erstellen
+    ///   und hier reinziehen, oder leer lassen, falls (noch) nicht gebraucht.
+    /// </summary>
+    [RequireComponent(typeof(CharacterController))]
+    public class PlayerController : MonoBehaviour
+    {
+        [Header("Bewegung")]
+        [SerializeField] private float moveSpeed = 5f;
+        [SerializeField] private float gravity = -9.81f;
+
+        [Header("Sprite-Spiegelung")]
+        [Tooltip("Das Kind-Objekt mit dem sichtbaren Bild (Quad mit BillboardSprite-Script drauf).")]
+        [SerializeField] private Transform visualTransform;
+
+        [Header("Gesundheit")]
+        [SerializeField] private int maxHealth = 100;
+
+        [Header("HP-Anzeige (optional, selbst im Canvas erstellt)")]
+        [Tooltip("Optional: Slider für eine grafische Lebensleiste.")]
+        [SerializeField] private Slider healthSlider;
+        [Tooltip("Optional: Text-Anzeige, z.B. '80 / 100'.")]
+        [SerializeField] private TMP_Text healthText;
+
+        [Header("Projektil (wird bei Balltreffer im Rhythmus-Minigame abgefeuert)")]
+        [Tooltip("Bild des Projektils. Zeichne es idealerweise nach 'oben' zeigend - das Skript dreht es automatisch in Flugrichtung.")]
+        [SerializeField] private Texture2D projectileTexture;
+        [SerializeField] private float projectileSpeed = 12f;
+        [SerializeField] private float projectileScale = 0.4f;
+        [SerializeField] private float projectileSpawnHeight = 1.2f;
+        [Tooltip("Sicherheitsnetz: Projektil wird nach dieser Strecke zerstört, falls es sein Ziel nicht erreicht (z.B. Ziel woanders hin verschwunden).")]
+        [SerializeField] private float projectileMaxRange = 30f;
+        [Tooltip("Schaden bei exakt mittigem Balltreffer (0 Abstand zur Ballmitte). Je ungenauer der Treffer, desto weniger Schaden.")]
+        [SerializeField] private int baseProjectileDamage = 25;
+        [Tooltip("Zusätzlicher Schaden pro gekaufter 'Projektil-Schaden'-Upgrade-Stufe (siehe UpgradeController).")]
+        [SerializeField] private int projectileDamagePerUpgradeLevel = 5;
+        [Tooltip("Zusätzliche gleichzeitig abgefeuerte Projektile pro gekaufter 'Projektil-Anzahl'-Upgrade-Stufe.")]
+        [SerializeField] private int projectilesPerUpgradeLevel = 1;
+
+        private class Projectile
+        {
+            public Transform Transform;
+            public EnemyController TargetEnemy;
+            public int Damage;
+            public float TraveledDistance;
+        }
+
+        private readonly List<Projectile> _activeProjectiles = new List<Projectile>();
+
+        [Header("Münzen (fallen von toten Gegnern)")]
+        [Tooltip("Bild der Münze.")]
+        [SerializeField] private Texture2D coinTexture;
+        [SerializeField] private float coinScale = 0.4f;
+        [Tooltip("Höhe über dem Boden, auf der die Münze liegt, sobald sie gelandet ist.")]
+        [SerializeField] private float coinGroundHeight = 0.3f;
+        [SerializeField] private float coinFallGravity = -9.81f;
+        [Tooltip("Abstand, ab dem die Münze anfängt langsam zum Spieler zu 'laufen'.")]
+        [SerializeField] private float coinMagnetRange = 3f;
+        [Tooltip("Zusätzlicher Magnet-Radius pro gekaufter 'Münzmagnet'-Upgrade-Stufe.")]
+        [SerializeField] private float coinMagnetRangePerUpgradeLevel = 1f;
+        [SerializeField] private float coinMoveSpeed = 4f;
+        [Tooltip("Abstand, ab dem die Münze als eingesammelt gilt (Spieler berührt sie).")]
+        [SerializeField] private float coinCollectDistance = 0.5f;
+
+        [Header("Münzen-Anzeige (optional, selbst im Canvas erstellt)")]
+        [Tooltip("Nur der Text für die Zahl - das Icon daneben erstellst du separat direkt im Canvas.")]
+        [SerializeField] private TMP_Text coinCountText;
+
+        // CoinCount lebt jetzt in GameSession (siehe RhythmWitchClone.Core), damit die Münzanzahl
+        // Szenenwechsel übersteht, ohne dass der ganze Spieler persistent gemacht werden muss.
+        public int CoinCount => GameSession.CoinCount;
+
+        private class Coin
+        {
+            public Transform Transform;
+            public bool HasLanded;
+            public float FallVelocityY;
+        }
+
+        private readonly List<Coin> _activeCoins = new List<Coin>();
+
+        [Header("Level-Sieg (keine Gegner mehr übrig)")]
+        [SerializeField] private GameObject winPanel;
+        [SerializeField] private TMP_Text winText;
+        [SerializeField] private Button backToMenuButton;
+        [SerializeField] private string safeZoneSceneName = "SafeZone";
+        [Tooltip("Wartezeit nach Levelstart, bevor auf 'keine Gegner mehr' geprüft wird - verhindert einen sofortigen Sieg, falls z.B. beim Laden kurzzeitig noch keine Gegner in der Szene stehen.")]
+        [SerializeField] private float winCheckDelay = 1f;
+
+        private bool _hasWonLevel;
+        private float _winCheckTimer;
+
+        public int CurrentHealth { get; private set; }
+        public int MaxHealth => maxHealth;
+
+        private CharacterController _controller;
+        private Vector3 _velocity;
+        private Vector3 _visualBaseScale;
+
+        private void Awake()
+        {
+            _controller = GetComponent<CharacterController>();
+
+            if (visualTransform != null)
+            {
+                // Merkt sich die ursprüngliche Größe, damit beim Spiegeln nur das Vorzeichen
+                // der X-Achse gedreht wird, statt die Skalierung jedes Mal draufzumultiplizieren.
+                _visualBaseScale = visualTransform.localScale;
+            }
+
+            if (backToMenuButton != null) backToMenuButton.onClick.AddListener(BackToMenuFromWin);
+        }
+
+        private void Start()
+        {
+            CurrentHealth = maxHealth;
+            UpdateCoinUI();
+            if (winPanel != null) winPanel.SetActive(false);
+            _winCheckTimer = winCheckDelay;
+
+            ApplyUpgrades();
+            LoadFromSave();
+        }
+
+        /// <summary>
+        /// Lädt beim Betreten der Spiel-Szene automatisch die zuletzt gespeicherte Position
+        /// für den aktuell ausgewählten Speicherstand (GameSession.SelectedSaveSlot).
+        /// Passiert nichts, falls kein Slot gewählt wurde oder der Slot noch leer ist
+        /// (dann bleibt der Spieler an der im Editor platzierten Startposition).
+        /// </summary>
+        private void LoadFromSave()
+        {
+            if (GameSession.SelectedSaveSlot < 0) return;
+
+            SaveData data = SaveSystem.Load(GameSession.SelectedSaveSlot);
+            if (!data.exists) return;
+
+            ApplySaveData(data);
+        }
+
+        /// <summary>
+        /// Versetzt den Spieler an die in den Save-Daten gespeicherte Position/Blickrichtung.
+        /// Public, damit z.B. ein "Neu laden"-Button das auch nutzen könnte, falls später gewünscht.
+        /// </summary>
+        public void ApplySaveData(SaveData data)
+        {
+            Vector3 savedPosition = new Vector3(data.playerPosX, data.playerPosY, data.playerPosZ);
+
+            // CharacterController kurz deaktivieren, da er sonst eigene Kollisions-Korrekturen
+            // auf eine direkte Positionsänderung anwendet und die Teleportation verfälschen kann.
+            _controller.enabled = false;
+            transform.position = savedPosition;
+            _controller.enabled = true;
+
+            if (visualTransform != null)
+            {
+                float sign = data.playerFacingRight ? -1f : 1f; // gleiche Vorzeichen-Logik wie in HandleFlip()
+                visualTransform.localScale = new Vector3(
+                    Mathf.Abs(_visualBaseScale.x) * sign,
+                    _visualBaseScale.y,
+                    _visualBaseScale.z);
+            }
+        }
+
+        /// <summary>
+        /// Schreibt die aktuelle Position/Blickrichtung des Spielers in das übergebene SaveData-Objekt.
+        /// Speichert NICHT selbst auf die Festplatte - das übernimmt der Aufrufer (z.B. PauseMenuController)
+        /// per SaveSystem.Save(...), nachdem alle relevanten Systeme ihre Daten eingetragen haben.
+        /// </summary>
+        public void WriteToSaveData(SaveData data)
+        {
+            data.playerPosX = transform.position.x;
+            data.playerPosY = transform.position.y;
+            data.playerPosZ = transform.position.z;
+
+            if (visualTransform != null)
+            {
+                data.playerFacingRight = visualTransform.localScale.x < 0f;
+            }
+        }
+
+        /// <summary>
+        /// Zieht dem Spieler Schaden ab (z.B. von EnemyController aufgerufen). Public, damit
+        /// jedes System, das Schaden verursachen soll, das direkt aufrufen kann.
+        /// </summary>
+        public void TakeDamage(int amount)
+        {
+            CurrentHealth = Mathf.Max(0, CurrentHealth - amount);
+
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.PlayPlayerDamagedSound(transform.position);
+            }
+        }
+
+        private void Update()
+        {
+            // Sobald die HP auf 0 sind, hört der Spieler auf sich zu bewegen -
+            // PauseMenuController zeigt parallel dazu den Game-Over-Bildschirm an.
+            if (CurrentHealth > 0)
+            {
+                HandleMovement();
+                HandleFlip();
+            }
+
+            UpdateHealthUI();
+            UpdateProjectiles();
+            UpdateCoins();
+            CheckForLevelWin();
+        }
+
+        private int _projectilesPerShot = 1;
+
+        /// <summary>
+        /// Wendet die gekauften Upgrade-Stufen (siehe UpgradeController, gehalten in GameSession -
+        /// pro Speicherstand getrennt) auf die Spieler-Werte an. Läuft einmal beim Levelstart -
+        /// wirkt sich also erst beim nächsten Betreten einer Szene aus, nicht sofort beim Kauf
+        /// in der Safe Zone (das Panel dort ist ohnehin eine andere Szene als das eigentliche Level).
+        /// </summary>
+        private void ApplyUpgrades()
+        {
+            int damageLevel = GameSession.GetUpgradeLevel(UpgradeController.ProjectileDamageKey);
+            baseProjectileDamage += damageLevel * projectileDamagePerUpgradeLevel;
+
+            int magnetLevel = GameSession.GetUpgradeLevel(UpgradeController.CoinMagnetKey);
+            coinMagnetRange += magnetLevel * coinMagnetRangePerUpgradeLevel;
+
+            int projectileCountLevel = GameSession.GetUpgradeLevel(UpgradeController.ProjectileCountKey);
+            _projectilesPerShot = 1 + projectileCountLevel * projectilesPerUpgradeLevel;
+        }
+
+        /// <summary>
+        /// Feuert bei einem erfolgreichen Balltreffer ein oder mehrere Projektile ab (je nach
+        /// gekaufter "Projektil-Anzahl"-Stufe) - jedes auf einen der nächstgelegenen Gegner.
+        /// Gibt es weniger Gegner als Projektile, werden die Ziele einfach mehrfach verwendet.
+        /// hitRatio kommt 1:1 von OrbitingBallsController (0 = exakte Mitte, 1 = Rand getroffen).
+        /// </summary>
+        public void FireProjectileAtNearestEnemy(float hitRatio)
+        {
+            List<EnemyController> targets = FindNearestEnemies(_projectilesPerShot);
+            if (targets.Count == 0) return;
+
+            int damage = Mathf.Max(1, Mathf.RoundToInt(baseProjectileDamage * Mathf.Clamp01(1f - hitRatio)));
+
+            for (int i = 0; i < _projectilesPerShot; i++)
+            {
+                EnemyController target = targets[i % targets.Count];
+                SpawnProjectile(target, damage);
+            }
+        }
+
+        /// <summary>
+        /// Gibt bis zu "count" Gegner zurück, sortiert vom nächstgelegenen an aufsteigend.
+        /// </summary>
+        private List<EnemyController> FindNearestEnemies(int count)
+        {
+            EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            List<EnemyController> sorted = new List<EnemyController>(enemies);
+
+            sorted.Sort((a, b) =>
+            {
+                float distA = (a.transform.position - transform.position).sqrMagnitude;
+                float distB = (b.transform.position - transform.position).sqrMagnitude;
+                return distA.CompareTo(distB);
+            });
+
+            if (sorted.Count > count)
+            {
+                sorted.RemoveRange(count, sorted.Count - count);
+            }
+
+            return sorted;
+        }
+
+        private void SpawnProjectile(EnemyController target, int damage)
+        {
+            GameObject projectileObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            projectileObject.name = "Projectile";
+
+            Collider existingCollider = projectileObject.GetComponent<Collider>();
+            if (existingCollider != null) Destroy(existingCollider);
+
+            projectileObject.transform.position = transform.position + Vector3.up * projectileSpawnHeight;
+            projectileObject.transform.localScale = Vector3.one * projectileScale;
+
+            MeshRenderer renderer = projectileObject.GetComponent<MeshRenderer>();
+
+            // Erzeugt automatisch ein passendes, transparenzfähiges Material - kein manuelles
+            // Material-Erstellen/Zuweisen im Editor nötig.
+            Shader spriteShader = Shader.Find("Sprites/Default");
+            if (spriteShader != null)
+            {
+                renderer.material = new Material(spriteShader);
+            }
+            if (projectileTexture != null)
+            {
+                renderer.material.mainTexture = projectileTexture;
+            }
+
+            _activeProjectiles.Add(new Projectile
+            {
+                Transform = projectileObject.transform,
+                TargetEnemy = target,
+                Damage = damage,
+                TraveledDistance = 0f
+            });
+
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.PlayProjectileFiredSound(transform.position);
+            }
+        }
+
+        private void UpdateProjectiles()
+        {
+            for (int i = _activeProjectiles.Count - 1; i >= 0; i--)
+            {
+                Projectile p = _activeProjectiles[i];
+
+                // Ziel existiert nicht mehr (z.B. zwischenzeitlich von einem anderen Projektil getötet).
+                if (p.TargetEnemy == null)
+                {
+                    Destroy(p.Transform.gameObject);
+                    _activeProjectiles.RemoveAt(i);
+                    continue;
+                }
+
+                Vector3 targetPosition = p.TargetEnemy.transform.position + Vector3.up * projectileSpawnHeight;
+                Vector3 toTarget = targetPosition - p.Transform.position;
+                float stepDistance = projectileSpeed * Time.deltaTime;
+
+                if (toTarget.magnitude <= stepDistance)
+                {
+                    // Treffer!
+                    p.TargetEnemy.TakeDamage(p.Damage, p.Transform.position);
+                    Destroy(p.Transform.gameObject);
+                    _activeProjectiles.RemoveAt(i);
+                    continue;
+                }
+
+                Vector3 direction = toTarget.normalized;
+                p.Transform.position += direction * stepDistance;
+
+                // Zeigt immer in Richtung des Ziels UND bleibt dabei zur Kamera ausgerichtet
+                // (wie ein Billboard, das zusätzlich in der Bildebene zur Flugrichtung rotiert ist).
+                Vector3 faceCameraDirection = Camera.main != null ? -Camera.main.transform.forward : Vector3.forward;
+                p.Transform.rotation = Quaternion.LookRotation(faceCameraDirection, direction);
+
+                p.TraveledDistance += stepDistance;
+                if (p.TraveledDistance > projectileMaxRange)
+                {
+                    Destroy(p.Transform.gameObject);
+                    _activeProjectiles.RemoveAt(i);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Erzeugt eine Münze an der übergebenen Position (z.B. von EnemyController beim Tod
+        /// aufgerufen). Die Münze fällt zunächst zu Boden, "läuft" danach bei Nähe zum Spieler
+        /// langsam hinterher und wird bei Berührung eingesammelt.
+        /// </summary>
+        public void SpawnCoin(Vector3 position)
+        {
+            GameObject coinObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            coinObject.name = "Coin";
+
+            Collider existingCollider = coinObject.GetComponent<Collider>();
+            if (existingCollider != null) Destroy(existingCollider);
+
+            coinObject.transform.position = position + Vector3.up * 1f; // startet leicht erhöht, fällt dann runter
+            coinObject.transform.localScale = Vector3.one * coinScale;
+
+            BillboardSprite billboard = coinObject.AddComponent<BillboardSprite>();
+            if (coinTexture != null)
+            {
+                billboard.SetTexture(coinTexture);
+            }
+
+            _activeCoins.Add(new Coin
+            {
+                Transform = coinObject.transform,
+                HasLanded = false,
+                FallVelocityY = 0f
+            });
+        }
+
+        private void UpdateCoins()
+        {
+            for (int i = _activeCoins.Count - 1; i >= 0; i--)
+            {
+                Coin coin = _activeCoins[i];
+
+                if (!coin.HasLanded)
+                {
+                    coin.FallVelocityY += coinFallGravity * Time.deltaTime;
+
+                    Vector3 pos = coin.Transform.position;
+                    pos.y += coin.FallVelocityY * Time.deltaTime;
+
+                    if (pos.y <= coinGroundHeight)
+                    {
+                        pos.y = coinGroundHeight;
+                        coin.HasLanded = true;
+                        coin.FallVelocityY = 0f;
+                    }
+
+                    coin.Transform.position = pos;
+                    continue;
+                }
+
+                float distance = Vector3.Distance(coin.Transform.position, transform.position);
+
+                if (distance <= coinCollectDistance)
+                {
+                    GameSession.AddCoins(1);
+                    UpdateCoinUI();
+
+                    if (AudioManager.Instance != null)
+                    {
+                        AudioManager.Instance.PlayCoinPickupSound(coin.Transform.position);
+                    }
+
+                    Destroy(coin.Transform.gameObject);
+                    _activeCoins.RemoveAt(i);
+                    continue;
+                }
+
+                if (distance <= coinMagnetRange)
+                {
+                    Vector3 targetPosition = transform.position;
+                    targetPosition.y = coin.Transform.position.y; // Höhe beibehalten, nur horizontal "laufen"
+
+                    Vector3 direction = (targetPosition - coin.Transform.position).normalized;
+                    coin.Transform.position += direction * coinMoveSpeed * Time.deltaTime;
+                }
+            }
+        }
+
+        private void UpdateCoinUI()
+        {
+            if (coinCountText != null)
+            {
+                coinCountText.text = CoinCount.ToString();
+            }
+        }
+
+        /// <summary>
+        /// Aktualisiert die Münzanzeige sofort von außen (z.B. von UpgradeController direkt
+        /// nach einem Kauf, statt erst beim nächsten Münzfund oder Szenenstart).
+        /// </summary>
+        public void RefreshCoinDisplay()
+        {
+            UpdateCoinUI();
+        }
+
+        private void UpdateHealthUI()
+        {
+            if (healthSlider != null)
+            {
+                healthSlider.maxValue = maxHealth;
+                healthSlider.value = CurrentHealth;
+            }
+
+            if (healthText != null)
+            {
+                healthText.text = $"{CurrentHealth} / {maxHealth}";
+            }
+        }
+
+        private void HandleMovement()
+        {
+            float horizontal = GetHorizontalInput(); // A/D bzw. Pfeiltasten links/rechts
+            float vertical = GetVerticalInput();      // W/S bzw. Pfeiltasten hoch/runter
+
+            Vector3 moveDirection = new Vector3(horizontal, 0f, vertical).normalized;
+
+            // Einfache Schwerkraft, damit der CharacterController zuverlässig auf dem Boden bleibt.
+            if (_controller.isGrounded && _velocity.y < 0f)
+            {
+                _velocity.y = -2f;
+            }
+            _velocity.y += gravity * Time.deltaTime;
+
+            Vector3 motion = moveDirection * moveSpeed + Vector3.up * _velocity.y;
+            _controller.Move(motion * Time.deltaTime);
+        }
+
+        private float GetHorizontalInput()
+        {
+            if (Keyboard.current == null) return 0f;
+
+            float value = 0f;
+            if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) value -= 1f;
+            if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) value += 1f;
+            return value;
+        }
+
+        private float GetVerticalInput()
+        {
+            if (Keyboard.current == null) return 0f;
+
+            float value = 0f;
+            if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) value -= 1f;
+            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) value += 1f;
+            return value;
+        }
+
+        private void HandleFlip()
+        {
+            if (visualTransform == null) return;
+
+            float horizontal = GetHorizontalInput();
+            if (Mathf.Approximately(horizontal, 0f)) return; // Nur vor/zurück laufen ändert die Blickrichtung nicht
+
+            bool movingRight = horizontal > 0f;
+            float flippedSignX = movingRight ? -1f : 1f;
+
+            visualTransform.localScale = new Vector3(
+                Mathf.Abs(_visualBaseScale.x) * flippedSignX,
+                _visualBaseScale.y,
+                _visualBaseScale.z);
+        }
+
+        /// <summary>
+        /// Prüft, ob keine Gegner mehr in der Szene übrig sind (jeder Gegner-Prefab läuft über
+        /// EnemyController und liegt auf der "Enemy"-Layer - das Zählen der EnemyController-
+        /// Instanzen entspricht hier also genau dem Zählen der Objekte auf dieser Layer).
+        /// Sobald keine mehr da sind, gilt das Level als gewonnen.
+        /// </summary>
+        private void CheckForLevelWin()
+        {
+            if (_hasWonLevel) return;
+            if (SceneManager.GetActiveScene().name == safeZoneSceneName) return; // Safe Zone ist kein Level
+
+            if (_winCheckTimer > 0f)
+            {
+                _winCheckTimer -= Time.deltaTime;
+                return;
+            }
+
+            EnemyController[] remainingEnemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            if (remainingEnemies.Length == 0)
+            {
+                WinLevel();
+            }
+        }
+
+        private void WinLevel()
+        {
+            _hasWonLevel = true;
+
+            if (LevelManager.Instance != null)
+            {
+                LevelManager.Instance.MarkCurrentLevelCompleted();
+            }
+
+            if (winText != null)
+            {
+                winText.text = "Level geschafft!";
+            }
+
+            if (winPanel != null)
+            {
+                winPanel.SetActive(true);
+            }
+
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.PlayLevelWinSound();
+            }
+
+            // Bewusst KEIN Time.timeScale = 0 - das Spiel läuft im Hintergrund normal weiter,
+            // damit der Spieler noch herumlaufende Münzen einsammeln kann.
+        }
+
+        private void BackToMenuFromWin()
+        {
+            SceneManager.LoadScene(safeZoneSceneName);
+        }
+    }
+}
