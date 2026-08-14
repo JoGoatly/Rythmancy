@@ -32,11 +32,24 @@ namespace RhythmWitchClone.Gameplay
                  "Aus: Objekt dreht sich individuell zur Kamera-Position (nötig bei frei beweglicher/rotierender Kamera).")]
         [SerializeField] private bool matchCameraRotation = true;
 
+        [Header("Bewegungs-Wackeln")]
+        [Tooltip("Leichtes Hin-und-Her-Neigen, nur solange sich das Objekt bewegt - steht es still, wird die Neigung wieder glatt.")]
+        [SerializeField] private bool enableMovementTilt = true;
+        [Tooltip("Wie stark geneigt wird, in Grad.")]
+        [SerializeField] private float tiltAmplitudeDegrees = 6f;
+        [Tooltip("Wie schnell hin und her geneigt wird.")]
+        [SerializeField] private float tiltFrequency = 8f;
+        [Tooltip("Wie schnell das Wackeln ein-/ausklingt, wenn Bewegung beginnt/aufhört.")]
+        [SerializeField] private float tiltSmoothSpeed = 10f;
+
         private MeshRenderer _meshRenderer;
+        private Vector3 _lastPosition;
+        private float _currentTiltAngle;
 
         private void Awake()
         {
             _meshRenderer = GetComponent<MeshRenderer>();
+            _lastPosition = transform.position;
 
             // Erzeugt automatisch ein passendes, transparenzfähiges Material - kein manuelles
             // Erstellen/Zuweisen im Editor mehr nötig, es reicht die Textur zuzuweisen.
@@ -70,6 +83,30 @@ namespace RhythmWitchClone.Gameplay
                 // frei um die Szene rotieren kann.
                 transform.forward = -(targetCamera.position - transform.position).normalized;
             }
+
+            ApplyMovementTilt();
+        }
+
+        /// <summary>
+        /// Erkennt Bewegung rein über die eigene Positionsänderung (kein Zugriff auf
+        /// PlayerController/EnemyController nötig - bleibt dadurch für jeden Charakter
+        /// gleichermaßen wiederverwendbar). Neigt bei Bewegung sanft hin und her, steht
+        /// das Objekt still, klingt die Neigung glatt auf 0 aus.
+        /// </summary>
+        private void ApplyMovementTilt()
+        {
+            if (!enableMovementTilt) return;
+
+            Vector3 currentPosition = transform.position;
+            bool isMoving = Vector3.Distance(currentPosition, _lastPosition) > 0.0005f;
+            _lastPosition = currentPosition;
+
+            float targetTilt = isMoving ? Mathf.Sin(Time.time * tiltFrequency) * tiltAmplitudeDegrees : 0f;
+            _currentTiltAngle = Mathf.Lerp(_currentTiltAngle, targetTilt, Time.deltaTime * tiltSmoothSpeed);
+
+            // Dreht um die Achse, die aus der Bildebene herausragt (Blickrichtung zur Kamera) -
+            // kippt das Bild dadurch in seiner eigenen Ebene nach links/rechts, statt es zu drehen.
+            transform.rotation *= Quaternion.Euler(0f, 0f, _currentTiltAngle);
         }
 
         /// <summary>

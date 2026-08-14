@@ -44,7 +44,20 @@ namespace RhythmWitchClone.Gameplay
         [Tooltip("Optional: Text-Anzeige, z.B. '80 / 100'.")]
         [SerializeField] private TMP_Text healthText;
 
-        [Header("Projektil (wird bei Balltreffer im Rhythmus-Minigame abgefeuert)")]
+        [Header("Noten-Aura (Standard-Schaden bei einem Balltreffer)")]
+        [Tooltip("Radius der Schockwelle in Weltraum-Einheiten - alle Gegner darin bekommen Schaden.")]
+        [SerializeField] private float auraRadius = 3f;
+        [Tooltip("Schaden bei exakt mittigem Balltreffer. Je ungenauer der Treffer, desto weniger Schaden.")]
+        [SerializeField] private int baseAuraDamage = 25;
+        [Tooltip("Wie lange die Schockwelle sichtbar ist (Sekunden) - expandiert währenddessen und blendet aus.")]
+        [SerializeField] private float auraDuration = 0.4f;
+        [Tooltip("Wie viele Noten-Streusel maximal gleichzeitig in der Aura verteilt werden.")]
+        [SerializeField] private int auraNoteSprinkleCount = 8;
+        [Tooltip("Größe der Noten-Streusel-Bilder (nicht die Tasten-Icons in der Spur, sondern die Noten-Bilder aus der Aura).")]
+        [SerializeField] private float auraNoteSpriteScale = 0.7f;
+
+        [Header("Projektile (standardmäßig deaktiviert - später als Upgrade freischaltbar)")]
+        [SerializeField] private bool projectilesEnabled = false;
         [Tooltip("Bild des Projektils. Zeichne es idealerweise nach 'oben' zeigend - das Skript dreht es automatisch in Flugrichtung.")]
         [SerializeField] private Texture2D projectileTexture;
         [SerializeField] private float projectileSpeed = 12f;
@@ -68,6 +81,26 @@ namespace RhythmWitchClone.Gameplay
         }
 
         private readonly List<Projectile> _activeProjectiles = new List<Projectile>();
+
+        private class AuraSprinkle
+        {
+            public Transform Transform;
+            public SpriteRenderer Renderer;
+            public float Angle;
+            public float TargetDistance;
+        }
+
+        private class AuraEffect
+        {
+            public Transform RingTransform;
+            public SpriteRenderer RingRenderer;
+            public readonly List<AuraSprinkle> Sprinkles = new List<AuraSprinkle>();
+            public float Timer;
+            public Vector3 CenterPosition; // Spielerposition zum Zeitpunkt des Treffers
+        }
+
+        private readonly List<AuraEffect> _activeAuras = new List<AuraEffect>();
+        private Sprite _auraRingSprite; // wird einmalig prozedural erzeugt und wiederverwendet
 
         [Header("Münzen (fallen von toten Gegnern)")]
         [Tooltip("Bild der Münze.")]
@@ -228,6 +261,7 @@ namespace RhythmWitchClone.Gameplay
             UpdateHealthUI();
             UpdateProjectiles();
             UpdateCoins();
+            UpdateAuras();
             CheckForLevelWin();
         }
 
@@ -252,10 +286,168 @@ namespace RhythmWitchClone.Gameplay
         }
 
         /// <summary>
+        /// Wird von BeatLaneController bei jedem erfolgreichen Treffer aufgerufen - das ist der
+        /// eigentliche Standard-Schaden (Schockwellen-Aura um den Spieler). Projektile feuern hier
+        /// zusätzlich nur, wenn "Projectiles Enabled" aktiv ist (standardmäßig aus, später als
+        /// Upgrade freischaltbar). hitRatio kommt 1:1 von BeatLaneController
+        /// (0 = exakte Mitte, 1 = Rand getroffen).
+        /// </summary>
+        public void TriggerAuraHit(Color auraColor, List<Sprite> noteSprites, float hitRatio)
+        {
+            int damage = Mathf.Max(1, Mathf.RoundToInt(baseAuraDamage * Mathf.Clamp01(1f - hitRatio)));
+
+            EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            foreach (EnemyController enemy in enemies)
+            {
+                float distance = Vector3.Distance(enemy.transform.position, transform.position);
+                if (distance <= auraRadius)
+                {
+                    enemy.TakeDamage(damage, transform.position);
+                }
+            }
+
+            SpawnAuraVisual(auraColor, noteSprites);
+
+            if (projectilesEnabled)
+            {
+                FireProjectileAtNearestEnemy(hitRatio);
+            }
+        }
+
+        /// <summary>
+        /// Erzeugt die visuelle Schockwelle: ein expandierender, ausblendender Ring in der
+        /// Tasten-Farbe, plus Noten-Streusel aus der übergebenen Bilderliste, die vom Zentrum
+        /// aus nach außen wandern - werden quasi vom Ring "mitgetragen".
+        /// </summary>
+        private void SpawnAuraVisual(Color auraColor, List<Sprite> noteSprites)
+        {
+            Vector3 centerPosition = transform.position;
+
+            GameObject ringObject = new GameObject("AuraRing");
+            ringObject.transform.position = centerPosition + Vector3.up * 0.05f;
+            ringObject.transform.rotation = Quaternion.Euler(90f, 0f, 0f); // flach auf den Boden gelegt
+            ringObject.transform.localScale = Vector3.one * 0.01f; // startet winzig, wächst dann
+
+            SpriteRenderer ringRenderer = ringObject.AddComponent<SpriteRenderer>();
+            ringRenderer.sprite = GetAuraRingSprite();
+            Color startColor = auraColor;
+            startColor.a = 1f;
+            ringRenderer.color = startColor;
+
+            AuraEffect aura = new AuraEffect
+            {
+                RingTransform = ringObject.transform,
+                RingRenderer = ringRenderer,
+                Timer = 0f,
+                CenterPosition = centerPosition
+            };
+
+            if (noteSprites != null && noteSprites.Count > 0)
+            {
+                for (int i = 0; i < auraNoteSprinkleCount; i++)
+                {
+                    Sprite noteSprite = noteSprites[Random.Range(0, noteSprites.Count)];
+
+                    GameObject noteObject = new GameObject("AuraNoteSprinkle");
+                    noteObject.transform.position = centerPosition + Vector3.up * 0.6f; // startet mittig, wandert dann per UpdateAuras nach außen
+                    noteObject.transform.localScale = Vector3.one * auraNoteSpriteScale;
+
+                    if (Camera.main != null)
+                    {
+                        // Kamera dreht sich in diesem Projekt nie - einmaliges Ausrichten reicht.
+                        noteObject.transform.rotation = Camera.main.transform.rotation;
+                    }
+
+                    SpriteRenderer noteRenderer = noteObject.AddComponent<SpriteRenderer>();
+                    noteRenderer.sprite = noteSprite;
+
+                    aura.Sprinkles.Add(new AuraSprinkle
+                    {
+                        Transform = noteObject.transform,
+                        Renderer = noteRenderer,
+                        Angle = Random.Range(0f, 360f) * Mathf.Deg2Rad,
+                        TargetDistance = Random.Range(auraRadius * 0.3f, auraRadius)
+                    });
+                }
+            }
+
+            _activeAuras.Add(aura);
+        }
+
+        /// <summary>
+        /// Erzeugt einmalig eine prozedurale Ring-Textur (heller Ring, zur Mitte und zum äußeren
+        /// Rand hin transparent) und cached sie - jede Aura verwendet dasselbe Sprite, nur mit
+        /// unterschiedlicher Farbe/Größe/Ausblenden.
+        /// </summary>
+        private Sprite GetAuraRingSprite()
+        {
+            if (_auraRingSprite != null) return _auraRingSprite;
+
+            const int size = 128;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            Vector2 center = new Vector2(size / 2f, size / 2f);
+            float maxDist = size / 2f;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float normalizedDist = Vector2.Distance(new Vector2(x, y), center) / maxDist;
+                    float alpha = Mathf.Clamp01(1f - Mathf.Abs(normalizedDist - 0.75f) * 6f);
+                    texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+            }
+            texture.Apply();
+
+            _auraRingSprite = Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
+            return _auraRingSprite;
+        }
+
+        private void UpdateAuras()
+        {
+            for (int i = _activeAuras.Count - 1; i >= 0; i--)
+            {
+                AuraEffect aura = _activeAuras[i];
+                aura.Timer += Time.deltaTime;
+                float t = Mathf.Clamp01(aura.Timer / auraDuration);
+
+                float currentDiameter = Mathf.Lerp(0f, auraRadius * 2f, t);
+                aura.RingTransform.localScale = new Vector3(currentDiameter, currentDiameter, 1f);
+
+                Color ringColor = aura.RingRenderer.color;
+                ringColor.a = 1f - t;
+                aura.RingRenderer.color = ringColor;
+
+                foreach (AuraSprinkle sprinkle in aura.Sprinkles)
+                {
+                    if (sprinkle.Transform == null || sprinkle.Renderer == null) continue;
+
+                    float currentDistance = Mathf.Lerp(0f, sprinkle.TargetDistance, t);
+                    Vector3 direction = new Vector3(Mathf.Cos(sprinkle.Angle), 0f, Mathf.Sin(sprinkle.Angle));
+                    sprinkle.Transform.position = aura.CenterPosition + direction * currentDistance + Vector3.up * 0.6f;
+
+                    Color c = sprinkle.Renderer.color;
+                    c.a = 1f - t;
+                    sprinkle.Renderer.color = c;
+                }
+
+                if (t >= 1f)
+                {
+                    Destroy(aura.RingTransform.gameObject);
+                    foreach (AuraSprinkle sprinkle in aura.Sprinkles)
+                    {
+                        if (sprinkle.Transform != null) Destroy(sprinkle.Transform.gameObject);
+                    }
+                    _activeAuras.RemoveAt(i);
+                }
+            }
+        }
+
+        /// <summary>
         /// Feuert bei einem erfolgreichen Balltreffer ein oder mehrere Projektile ab (je nach
         /// gekaufter "Projektil-Anzahl"-Stufe) - jedes auf einen der nächstgelegenen Gegner.
         /// Gibt es weniger Gegner als Projektile, werden die Ziele einfach mehrfach verwendet.
-        /// hitRatio kommt 1:1 von OrbitingBallsController (0 = exakte Mitte, 1 = Rand getroffen).
+        /// hitRatio kommt 1:1 von BeatLaneController (0 = exakte Mitte, 1 = Rand getroffen).
         /// </summary>
         public void FireProjectileAtNearestEnemy(float hitRatio)
         {

@@ -10,11 +10,11 @@ namespace RhythmWitchClone.Levels
     /// <summary>
     /// Upgrade-Station in der Safe Zone - gleiches Grundprinzip wie SafeZoneController
     /// (Trigger-Bereich, "E"-Tastenhinweis, öffnet ein Panel). Bietet 4 Upgrades an:
-    /// Ball-Anzahl, Projektil-Anzahl, Projektil-Schaden, Münzmagnet-Radius.
+    /// Tasten-Anzahl, Projektil-Anzahl, Projektil-Schaden, Münzmagnet-Radius.
     ///
     /// Die Upgrade-Stufen werden über GameSession pro Speicherstand getrennt gehalten (siehe die
     /// oben in dieser Klasse) -
-    /// dadurch wendet OrbitingBallsController/PlayerController sie beim nächsten Levelstart
+    /// dadurch wendet BeatLaneController/PlayerController sie beim nächsten Levelstart
     /// automatisch selbst an, ohne dass dieses Script irgendeine Referenz auf laufende
     /// Level-Objekte braucht.
     ///
@@ -28,7 +28,7 @@ namespace RhythmWitchClone.Levels
     public class UpgradeController : MonoBehaviour
     {
         // Zentrale Schlüssel für die Upgrade-Stufen (werden in GameSession gehalten, pro
-        // Speicherstand getrennt) - public, damit OrbitingBallsController/PlayerController sie beim Anwenden der Upgrades
+        // Speicherstand getrennt) - public, damit BeatLaneController/PlayerController sie beim Anwenden der Upgrades
         // referenzieren können, ohne den Schlüssel selbst nochmal als String zu tippen.
         public const string BallCountKey = "Upgrade_BallCount";
         public const string ProjectileCountKey = "Upgrade_ProjectileCount";
@@ -45,13 +45,13 @@ namespace RhythmWitchClone.Levels
         [SerializeField] private PlayerController player;
 
         [Tooltip("Wird ausgeblendet/pausiert, solange das Upgrade-Panel offen ist (wie bei der Level-Auswahl).")]
-        [SerializeField] private OrbitingBallsController orbitingBalls;
+        [SerializeField] private BeatLaneController beatLane;
 
         [Header("Kosten")]
         [SerializeField] private int baseCost = 10;
         [SerializeField] private int costIncreasePerLevel = 5;
 
-        [Header("Ball-Anzahl")]
+        [Header("Tasten-Anzahl")]
         [SerializeField] private TMP_Text ballCountLabel;
         [SerializeField] private Button ballCountBuyButton;
         [SerializeField] private int ballCountMaxLevel = 6;
@@ -120,7 +120,7 @@ namespace RhythmWitchClone.Levels
         {
             if (keyPromptUI != null) keyPromptUI.SetActive(false);
             if (upgradePanel != null) upgradePanel.SetActive(true);
-            if (orbitingBalls != null) orbitingBalls.SetActive(false);
+            if (beatLane != null) beatLane.SetActive(false);
 
             RefreshUpgradeUI();
         }
@@ -129,7 +129,7 @@ namespace RhythmWitchClone.Levels
         {
             if (upgradePanel != null) upgradePanel.SetActive(false);
             if (keyPromptUI != null && _playerInRange) keyPromptUI.SetActive(true);
-            if (orbitingBalls != null) orbitingBalls.SetActive(true);
+            if (beatLane != null) beatLane.SetActive(true);
         }
 
         private int GetLevel(string key) => GameSession.GetUpgradeLevel(key);
@@ -140,7 +140,7 @@ namespace RhythmWitchClone.Levels
         /// Versucht, eine Upgrade-Stufe zu kaufen: prüft Max-Stufe + genug Münzen, zieht die
         /// Kosten ab und erhöht die gespeicherte Stufe um 1. Projektil-Schaden/-Anzahl und
         /// Münzmagnet wirken sich erst beim nächsten Levelstart aus (siehe PlayerController.
-        /// ApplyUpgrades) - Münzanzeige und Ball-Anzahl werden aber SOFORT aktualisiert, damit
+        /// ApplyUpgrades) - Münzanzeige und Tasten-Anzahl werden aber SOFORT aktualisiert, damit
         /// der Kauf schon in der Safe Zone sichtbar ist.
         /// </summary>
         private void TryBuy(string key, int maxLevel)
@@ -159,15 +159,15 @@ namespace RhythmWitchClone.Levels
                 player.RefreshCoinDisplay();
             }
 
-            if (key == BallCountKey && orbitingBalls != null)
+            if (key == BallCountKey && beatLane != null)
             {
-                orbitingBalls.RefreshBallCount();
+                beatLane.RefreshNoteCount();
             }
         }
 
         private void RefreshUpgradeUI()
         {
-            UpdateUpgradeLabel(ballCountLabel, "Bälle", BallCountKey, ballCountMaxLevel);
+            UpdateUpgradeLabel(ballCountLabel, "Tasten", BallCountKey, ballCountMaxLevel);
             UpdateUpgradeLabel(projectileCountLabel, "Projektile", ProjectileCountKey, projectileCountMaxLevel);
             UpdateUpgradeLabel(projectileDamageLabel, "Schaden", ProjectileDamageKey, projectileDamageMaxLevel);
             UpdateUpgradeLabel(coinMagnetLabel, "Münzmagnet", CoinMagnetKey, coinMagnetMaxLevel);

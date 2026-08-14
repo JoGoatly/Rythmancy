@@ -26,7 +26,7 @@ namespace RhythmWitchClone.Levels
 
         [Header("Sonstiges")]
         [Tooltip("Wird ausgeblendet/pausiert, solange die Level-Auswahl offen ist.")]
-        [SerializeField] private OrbitingBallsController orbitingBalls;
+        [SerializeField] private BeatLaneController beatLane;
 
         private bool _playerInRange;
 
@@ -67,7 +67,7 @@ namespace RhythmWitchClone.Levels
         {
             if (keyPromptUI != null) keyPromptUI.SetActive(false);
             if (levelSelectPanel != null) levelSelectPanel.SetActive(true);
-            if (orbitingBalls != null) orbitingBalls.SetActive(false);
+            if (beatLane != null) beatLane.SetActive(false);
         }
 
         /// <summary>
@@ -78,7 +78,7 @@ namespace RhythmWitchClone.Levels
         {
             if (levelSelectPanel != null) levelSelectPanel.SetActive(false);
             if (keyPromptUI != null && _playerInRange) keyPromptUI.SetActive(true);
-            if (orbitingBalls != null) orbitingBalls.SetActive(true);
+            if (beatLane != null) beatLane.SetActive(true);
         }
     }
 }
