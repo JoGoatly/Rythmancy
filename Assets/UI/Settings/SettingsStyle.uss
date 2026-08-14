@@ -1,0 +1,26 @@
+.styalizedBorder {
+    border-width: 5px;
+    border-color: rgb(0, 0, 0);
+    border-radius: 50px;
+}
+
+.styalizedSlider .unity-base-slider__drag-container {
+    translate: 0px -25%;
+}
+
+.styalizedSlider .unity-base-slider__tracker {
+    border-width: 5px;
+    border-color: rgb(0, 0, 0);
+    border-radius: 12px;
+    height: 24px;
+    translate: 0px 35%;
+}
+ 
+.styalizedSlider .unity-base-slider__dragger {
+    border-width: 5px;
+    border-color: rgb(0, 0, 0);
+    border-radius: 30px;
+    height: 60px;
+    width:60px;
+}
+ 

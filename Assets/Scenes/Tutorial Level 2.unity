@@ -5837,14 +5837,22 @@ MonoBehaviour:
   projectileSpawnHeight: 1.2
   projectileMaxRange: 30
   baseProjectileDamage: 25
+  projectileDamagePerUpgradeLevel: 5
+  projectilesPerUpgradeLevel: 1
   coinTexture: {fileID: 2800000, guid: f8a070755414f14479e4ca36e1e29f8d, type: 3}
   coinScale: 0.4
   coinGroundHeight: 0.3
   coinFallGravity: -9.81
   coinMagnetRange: 3
+  coinMagnetRangePerUpgradeLevel: 1
   coinMoveSpeed: 4
   coinCollectDistance: 0.5
   coinCountText: {fileID: 1215506034}
+  winPanel: {fileID: 0}
+  winText: {fileID: 0}
+  backToMenuButton: {fileID: 0}
+  safeZoneSceneName: SafeZone
+  winCheckDelay: 1
 --- !u!143 &1932146098
 CharacterController:
   m_ObjectHideFlags: 0

@@ -1,0 +1,4 @@
+<ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Settings/SettingsStyle.uss?fileID=7433441132597879392&amp;guid=5085146f60c82d441936ee0408272a4a&amp;type=3#SettingsStyle" />
+    <ui:Button text="Test Button" class="styalizedBorder" style="height: 100%; width: 100%; min-width: 200px; min-height: 60px; border-top-left-radius: 25px; border-top-right-radius: 25px; border-bottom-right-radius: 25px; border-bottom-left-radius: 25px; font-size: 40px; text-overflow: ellipsis;" />
+</ui:UXML>
