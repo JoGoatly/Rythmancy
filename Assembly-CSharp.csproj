@@ -53,6 +53,7 @@
     <Compile Include="Assets\Scripts\UpgradeController.cs" />
     <Compile Include="Assets\Scripts\Level\LevelManager.cs" />
     <Compile Include="Assets\Scripts\Gameplay\BillboardSprite.cs" />
+    <Compile Include="Assets\Scripts\Tutorialmanager.cs" />
     <Compile Include="Assets\Scripts\Gameplay\CameraFollow.cs" />
     <Compile Include="Assets\Scripts\UI\Settings\AudioSettingsPanel.cs" />
     <Compile Include="Assets\Scripts\Save\SaveSystem.cs" />
@@ -67,6 +68,7 @@
     <Compile Include="Assets\Scripts\Core\GameSettingsObject.cs" />
     <Compile Include="Assets\Scripts\Audio\AudioManager.cs" />
     <Compile Include="Assets\Scripts\Core\GameSettings.cs" />
+    <Compile Include="Assets\Scripts\Cardabilitycontroller.cs" />
     <Compile Include="Assets\Scripts\UI\MainMenu\SaveSlotSelectionController.cs" />
     <Compile Include="Assets\Scripts\Level\LevelSelectController.cs" />
   </ItemGroup>

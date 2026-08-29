@@ -56,6 +56,13 @@ namespace RhythmWitchClone.Gameplay
         [Tooltip("Größe der Noten-Streusel-Bilder (nicht die Tasten-Icons in der Spur, sondern die Noten-Bilder aus der Aura).")]
         [SerializeField] private float auraNoteSpriteScale = 0.7f;
 
+        // Generische, von außen gesetzte Karten-Wirkungen (Werte selbst kommen komplett aus
+        // CardAbilityController - PlayerController kennt keine Karten-Zahlen, führt nur aus,
+        // was ihm über die Methoden unten übergeben wird).
+        private float _damageReductionPercent; // 0-1, von SetDamageReduction gesetzt
+        private int _auraDamageBonus;
+        private float _auraRadiusBonus;
+
         [Header("Projektile (standardmäßig deaktiviert - später als Upgrade freischaltbar)")]
         [SerializeField] private bool projectilesEnabled = false;
         [Tooltip("Bild des Projektils. Zeichne es idealerweise nach 'oben' zeigend - das Skript dreht es automatisch in Flugrichtung.")]
@@ -96,6 +103,8 @@ namespace RhythmWitchClone.Gameplay
             public SpriteRenderer RingRenderer;
             public readonly List<AuraSprinkle> Sprinkles = new List<AuraSprinkle>();
             public float Timer;
+            public float Duration; // pro Instanz, damit normale und Spezial-Schockwelle unterschiedlich lang sein können
+            public float TargetRadius; // pro Instanz, damit die Spezial-Schockwelle größer sein kann
             public Vector3 CenterPosition; // Spielerposition zum Zeitpunkt des Treffers
         }
 
@@ -151,6 +160,16 @@ namespace RhythmWitchClone.Gameplay
         private CharacterController _controller;
         private Vector3 _velocity;
         private Vector3 _visualBaseScale;
+        private bool _movementLocked;
+
+        /// <summary>
+        /// Sperrt/entsperrt die Bewegung von außen (z.B. TutorialManager, während ein
+        /// Dialog-Schritt gerade erklärt wird, bevor der Spieler etwas ausprobieren soll).
+        /// </summary>
+        public void SetMovementLocked(bool locked)
+        {
+            _movementLocked = locked;
+        }
 
         private void Awake()
         {
@@ -240,6 +259,11 @@ namespace RhythmWitchClone.Gameplay
         /// </summary>
         public void TakeDamage(int amount)
         {
+            if (_damageReductionPercent > 0f)
+            {
+                amount = Mathf.RoundToInt(amount * (1f - _damageReductionPercent));
+            }
+
             CurrentHealth = Mathf.Max(0, CurrentHealth - amount);
 
             if (AudioManager.Instance != null)
@@ -252,7 +276,9 @@ namespace RhythmWitchClone.Gameplay
         {
             // Sobald die HP auf 0 sind, hört der Spieler auf sich zu bewegen -
             // PauseMenuController zeigt parallel dazu den Game-Over-Bildschirm an.
-            if (CurrentHealth > 0)
+            // _movementLocked kann von außen gesetzt werden (z.B. TutorialManager), um Bewegung
+            // vorübergehend zu sperren, ohne die HP anzufassen.
+            if (CurrentHealth > 0 && !_movementLocked)
             {
                 HandleMovement();
                 HandleFlip();
@@ -294,19 +320,21 @@ namespace RhythmWitchClone.Gameplay
         /// </summary>
         public void TriggerAuraHit(Color auraColor, List<Sprite> noteSprites, float hitRatio)
         {
-            int damage = Mathf.Max(1, Mathf.RoundToInt(baseAuraDamage * Mathf.Clamp01(1f - hitRatio)));
+            float effectiveRadius = auraRadius + _auraRadiusBonus;
+            int effectiveBaseDamage = baseAuraDamage + _auraDamageBonus;
+            int damage = Mathf.Max(1, Mathf.RoundToInt(effectiveBaseDamage * Mathf.Clamp01(1f - hitRatio)));
 
             EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
             foreach (EnemyController enemy in enemies)
             {
                 float distance = Vector3.Distance(enemy.transform.position, transform.position);
-                if (distance <= auraRadius)
+                if (distance <= effectiveRadius)
                 {
                     enemy.TakeDamage(damage, transform.position);
                 }
             }
 
-            SpawnAuraVisual(auraColor, noteSprites);
+            SpawnAuraVisual(auraColor, noteSprites, effectiveRadius, auraDuration);
 
             if (projectilesEnabled)
             {
@@ -315,11 +343,65 @@ namespace RhythmWitchClone.Gameplay
         }
 
         /// <summary>
-        /// Erzeugt die visuelle Schockwelle: ein expandierender, ausblendender Ring in der
-        /// Tasten-Farbe, plus Noten-Streusel aus der übergebenen Bilderliste, die vom Zentrum
-        /// aus nach außen wandern - werden quasi vom Ring "mitgetragen".
+        /// Setzt, wie viel Prozent Schaden aktuell reduziert werden (0 = keine Reduktion,
+        /// 0.3 = 30% weniger). Wird von CardAbilityController beim An-/Abwählen der
+        /// Verteidigungskarte aufgerufen (0 zum Zurücksetzen).
         /// </summary>
-        private void SpawnAuraVisual(Color auraColor, List<Sprite> noteSprites)
+        public void SetDamageReduction(float reductionPercent)
+        {
+            _damageReductionPercent = reductionPercent;
+        }
+
+        /// <summary>
+        /// Heilt den Spieler um den angegebenen Betrag (bis maximal Max Health). Public, damit
+        /// z.B. CardAbilityController das periodisch für die Verteidigungskarte aufrufen kann.
+        /// </summary>
+        public void Heal(int amount)
+        {
+            CurrentHealth = Mathf.Min(maxHealth, CurrentHealth + amount);
+        }
+
+        /// <summary>
+        /// Setzt einen zusätzlichen Schadens-/Radius-Bonus für die Noten-Aura (0/0 zum
+        /// Zurücksetzen). Wird von CardAbilityController beim An-/Abwählen der Angriffskarte
+        /// aufgerufen.
+        /// </summary>
+        public void SetAuraBonus(int damageBonus, float radiusBonus)
+        {
+            _auraDamageBonus = damageBonus;
+            _auraRadiusBonus = radiusBonus;
+        }
+
+        /// <summary>
+        /// Löst eine Schockwelle mit den übergebenen Werten aus: stößt alle Gegner im Radius weg
+        /// und betäubt sie, plus die passende visuelle Schockwelle. Komplett parametrisiert -
+        /// PlayerController kennt selbst keine Karten-Werte, die kommen von CardAbilityController.
+        /// </summary>
+        public void TriggerSpecialShockwave(float radius, float knockbackForce, float stunDuration, Color visualColor, float visualDuration)
+        {
+            EnemyController[] enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+            foreach (EnemyController enemy in enemies)
+            {
+                float distance = Vector3.Distance(enemy.transform.position, transform.position);
+                if (distance <= radius)
+                {
+                    Vector3 direction = enemy.transform.position - transform.position;
+                    direction.y = 0f;
+                    enemy.ApplyStun(direction, knockbackForce, stunDuration);
+                }
+            }
+
+            SpawnAuraVisual(visualColor, null, radius, visualDuration);
+        }
+
+        /// <summary>
+        /// Erzeugt die visuelle Schockwelle: ein expandierender, ausblendender Ring in der
+        /// übergebenen Farbe, plus (falls Noten-Bilder übergeben werden) Noten-Streusel, die
+        /// vom Zentrum aus nach außen wandern - werden quasi vom Ring "mitgetragen". radius/duration
+        /// bestimmen Größe und Dauer - dadurch nutzt auch die größere Spezial-Schockwelle exakt
+        /// dieselbe Logik wie ein normaler Balltreffer, nur mit anderen Werten.
+        /// </summary>
+        private void SpawnAuraVisual(Color auraColor, List<Sprite> noteSprites, float radius, float duration)
         {
             Vector3 centerPosition = transform.position;
 
@@ -339,6 +421,8 @@ namespace RhythmWitchClone.Gameplay
                 RingTransform = ringObject.transform,
                 RingRenderer = ringRenderer,
                 Timer = 0f,
+                Duration = duration,
+                TargetRadius = radius,
                 CenterPosition = centerPosition
             };
 
@@ -366,7 +450,7 @@ namespace RhythmWitchClone.Gameplay
                         Transform = noteObject.transform,
                         Renderer = noteRenderer,
                         Angle = Random.Range(0f, 360f) * Mathf.Deg2Rad,
-                        TargetDistance = Random.Range(auraRadius * 0.3f, auraRadius)
+                        TargetDistance = Random.Range(radius * 0.3f, radius)
                     });
                 }
             }
@@ -409,9 +493,9 @@ namespace RhythmWitchClone.Gameplay
             {
                 AuraEffect aura = _activeAuras[i];
                 aura.Timer += Time.deltaTime;
-                float t = Mathf.Clamp01(aura.Timer / auraDuration);
+                float t = Mathf.Clamp01(aura.Timer / aura.Duration);
 
-                float currentDiameter = Mathf.Lerp(0f, auraRadius * 2f, t);
+                float currentDiameter = Mathf.Lerp(0f, aura.TargetRadius * 2f, t);
                 aura.RingTransform.localScale = new Vector3(currentDiameter, currentDiameter, 1f);
 
                 Color ringColor = aura.RingRenderer.color;

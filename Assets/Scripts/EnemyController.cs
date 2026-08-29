@@ -66,6 +66,7 @@ namespace RhythmWitchClone.Gameplay
         private Vector3 _knockbackVelocity;
         private float _knockbackTimer;
         private float _knockbackDurationTotal; // welche Dauer gerade gilt - Angriff- und Treffer-Knockback haben unterschiedliche Werte
+        private float _stunTimer; // Betäubung durch Spieler-Spezialfähigkeiten (siehe ApplyStun)
 
         private float _attackCooldownTimer;
         private Vector3 _visualBaseScale;
@@ -105,7 +106,17 @@ namespace RhythmWitchClone.Gameplay
                 _attackCooldownTimer -= Time.deltaTime;
             }
 
-            if (_knockbackTimer > 0f)
+            if (_stunTimer > 0f)
+            {
+                // Betäubt: keine Bewegung, kein Angriff - nur Knockback (falls gerade aktiv) und Schwerkraft laufen weiter.
+                _stunTimer -= Time.deltaTime;
+
+                if (_knockbackTimer > 0f)
+                {
+                    HandleKnockback();
+                }
+            }
+            else if (_knockbackTimer > 0f)
             {
                 HandleKnockback();
             }
@@ -150,6 +161,17 @@ namespace RhythmWitchClone.Gameplay
             knockDirection.y = 0f;
 
             TriggerKnockback(knockDirection, knockbackForce, knockbackDuration);
+        }
+
+        /// <summary>
+        /// Betäubt den Gegner für die angegebene Dauer (keine Bewegung, kein Angriff) und stößt
+        /// ihn zusätzlich kurz in die übergebene Richtung weg - für Spieler-Spezialfähigkeiten
+        /// wie eine Schockwelle.
+        /// </summary>
+        public void ApplyStun(Vector3 knockbackDirection, float knockbackForce, float stunDuration)
+        {
+            _stunTimer = stunDuration;
+            TriggerKnockback(knockbackDirection, knockbackForce, hitKnockbackDuration);
         }
 
         /// <summary>

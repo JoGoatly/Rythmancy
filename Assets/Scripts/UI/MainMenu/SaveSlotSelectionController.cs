@@ -26,6 +26,9 @@ namespace RhythmWitchClone.UI.MainMenu
         [Header("Navigation")]
         [SerializeField] private Button backButton;
         [SerializeField] private MainMenuController mainMenuController;
+        [Tooltip("Szene für einen NEUEN Speicherstand (Slot war leer) - z.B. dein Tutorial-Level.")]
+        [SerializeField] private string tutorialSceneName = "Tutorial";
+        [Tooltip("Szene für einen BEREITS VORHANDENEN Speicherstand.")]
         [SerializeField] private string gameSceneName = "SafeZone";
 
         private void Awake()
@@ -64,7 +67,9 @@ namespace RhythmWitchClone.UI.MainMenu
             SaveData data = SaveSystem.Load(slotIndex);
             GameSession.LoadFromSaveData(data);
 
-            SceneManager.LoadScene(gameSceneName);
+            // Neuer, bisher leerer Speicherstand -> Tutorial. Bereits vorhandener -> direkt Safe Zone.
+            string targetScene = data.exists ? gameSceneName : tutorialSceneName;
+            SceneManager.LoadScene(targetScene);
         }
     }
 }
