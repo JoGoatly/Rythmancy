@@ -1237,7 +1237,8 @@ MonoBehaviour:
     thrownObjectDamage: 0
     thrownObjectFlightDuration: 0
   - text: "Zudem Hat der Gegner eine M\xFCnze fallen gelassen, du kannst jederzeit
-      rechts oben die Anzahl deiner gesammelten M\xFCnzen sehen"
+      rechts oben die Anzahl deiner gesammelten M\xFCnzen sehen. Diese brauchst du,
+      um dich zu verbessern."
     advanceMode: 0
     unlocksMovement: 0
     damageToApplyOnShow: 0
@@ -1245,6 +1246,61 @@ MonoBehaviour:
     uiElementsToReveal:
     - {fileID: 1777275164630608520}
     - {fileID: 7881773815320843706}
+    targetArea: {fileID: 0}
+    targetAreaRadius: 0
+    enemyToDefeat: {fileID: 0}
+    thrownObjectSprite: {fileID: 0}
+    thrownObjectDamage: 0
+    thrownObjectFlightDuration: 0
+  - text: Die blaue Leiste ist dein Mana
+    advanceMode: 0
+    unlocksMovement: 0
+    damageToApplyOnShow: 0
+    marker: {fileID: 0}
+    uiElementsToReveal:
+    - {fileID: 5607750509738364593}
+    targetArea: {fileID: 0}
+    targetAreaRadius: 0
+    enemyToDefeat: {fileID: 0}
+    thrownObjectSprite: {fileID: 0}
+    thrownObjectDamage: 0
+    thrownObjectFlightDuration: 0
+  - text: "Das sind deine Karten, sie k\xF6nnen dich st\xE4rken, heilen oder dir
+      eine kurze pause geben. Nutze deine Heilkarte indem du \"1\" dr\xFCckst um
+      dich zu Heilen."
+    advanceMode: 4
+    unlocksMovement: 0
+    damageToApplyOnShow: 0
+    marker: {fileID: 0}
+    uiElementsToReveal:
+    - {fileID: 5872831624212195548}
+    targetArea: {fileID: 0}
+    targetAreaRadius: 0
+    enemyToDefeat: {fileID: 0}
+    thrownObjectSprite: {fileID: 0}
+    thrownObjectDamage: 0
+    thrownObjectFlightDuration: 0
+  - text: "Jetzt bist du wieder vollgeheilt. Wie du gemerkt hast hat dich die Karte
+      zwar geheilt aber auch mana verbraucht. Dr\xFCcke wieder \"1\" damit die karte
+      wieder inaktiv wird. Dadurch f\xFCllt sich dein mana wieder auf"
+    advanceMode: 4
+    unlocksMovement: 0
+    damageToApplyOnShow: 0
+    marker: {fileID: 0}
+    uiElementsToReveal: []
+    targetArea: {fileID: 0}
+    targetAreaRadius: 0
+    enemyToDefeat: {fileID: 0}
+    thrownObjectSprite: {fileID: 0}
+    thrownObjectDamage: 0
+    thrownObjectFlightDuration: 0
+  - text: "Du hast das Tutoial abgeschlossen! Dr\xFCcke unten auf Verlassen um in
+      die Sichere Zone zu kommen. Dort kannst du dich verbessern und weiterspielen."
+    advanceMode: 4
+    unlocksMovement: 0
+    damageToApplyOnShow: 0
+    marker: {fileID: 0}
+    uiElementsToReveal: []
     targetArea: {fileID: 0}
     targetAreaRadius: 0
     enemyToDefeat: {fileID: 0}
@@ -1394,11 +1450,11 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
-  m_Type: 1
+  m_Sprite: {fileID: -246007451, guid: 61cc25a27c6fb9f47916446184b307e2, type: 3}
+  m_Type: 3
   m_PreserveAspect: 0
   m_FillCenter: 1
-  m_FillMethod: 4
+  m_FillMethod: 0
   m_FillAmount: 1
   m_FillClockwise: 1
   m_FillOrigin: 0
@@ -1472,7 +1528,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &248299711950134163
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9811,11 +9867,11 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
-  m_Type: 1
+  m_Sprite: {fileID: 1107275892, guid: 61cc25a27c6fb9f47916446184b307e2, type: 3}
+  m_Type: 3
   m_PreserveAspect: 0
   m_FillCenter: 1
-  m_FillMethod: 4
+  m_FillMethod: 0
   m_FillAmount: 1
   m_FillClockwise: 1
   m_FillOrigin: 0
@@ -10021,7 +10077,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &7297054404702970765
 RectTransform:
   m_ObjectHideFlags: 0

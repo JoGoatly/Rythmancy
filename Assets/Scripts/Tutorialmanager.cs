@@ -20,6 +20,12 @@ namespace RhythmWitchClone.Gameplay
     ///   der Spieler nah genug an der Zone ist ("Target Area Radius").
     /// - "Wait For Enemy Defeat": wartet, bis der bei "Enemy To Defeat" eingetragene Gegner
     ///   besiegt wurde (springt automatisch weiter, sobald er zerstört ist).
+    /// - "Wait For Full Health": wartet, bis der Spieler wieder auf voller Gesundheit ist (z.B.
+    ///   damit er die Heilung der Verteidigungskarte einmal selbst ausprobiert).
+    /// - "Finish": letzter Schritt - der Text wird ganz normal angezeigt UND gleichzeitig das
+    ///   Level-Win-Panel (aus PlayerController) geöffnet. E überspringt nur noch den Schreib-
+    ///   Effekt, schaltet aber nicht weiter - der Spieler verlässt das Tutorial über den
+    ///   "Zurück zum Menü"-Button des Win-Panels, der wie gewohnt in die Safe Zone führt.
     ///
     /// Zusätzlich pro Schritt möglich: "Damage To Apply On Show" fügt dem Spieler sofort Schaden
     /// zu (praktisch kombiniert mit "Ui Elements To Reveal", um z.B. gleichzeitig die HP-Leiste
@@ -52,7 +58,9 @@ namespace RhythmWitchClone.Gameplay
             PressE,
             WaitForMovement,
             MoveToArea,
-            WaitForEnemyDefeat
+            WaitForEnemyDefeat,
+            WaitForFullHealth,
+            Finish
         }
 
         [System.Serializable]
@@ -162,6 +170,27 @@ namespace RhythmWitchClone.Gameplay
                 if (continuePromptUI != null) continuePromptUI.SetActive(false);
                 if (guideArrow != null) guideArrow.gameObject.SetActive(false);
                 HandleWaitForEnemyDefeat(currentStep);
+            }
+            else if (currentStep.advanceMode == StepAdvanceMode.WaitForFullHealth)
+            {
+                if (continuePromptUI != null) continuePromptUI.SetActive(false);
+                if (guideArrow != null) guideArrow.gameObject.SetActive(false);
+                HandleWaitForFullHealth();
+            }
+            else if (currentStep.advanceMode == StepAdvanceMode.Finish)
+            {
+                // Letzter Schritt: Text läuft normal zu Ende, aber E schaltet nichts mehr weiter -
+                // der Spieler verlässt das Tutorial über den Button im Win-Panel.
+                if (continuePromptUI != null) continuePromptUI.SetActive(false);
+                if (guideArrow != null) guideArrow.gameObject.SetActive(false);
+
+                if (_isTyping && Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
+                {
+                    // E darf aber weiterhin den Schreib-Effekt überspringen.
+                    _visibleCharacterCount = _currentFullText.Length;
+                    if (dialogueText != null) dialogueText.text = _currentFullText;
+                    _isTyping = false;
+                }
             }
             else
             {
@@ -289,6 +318,21 @@ namespace RhythmWitchClone.Gameplay
         }
 
         /// <summary>
+        /// Für Schritte mit StepAdvanceMode.WaitForFullHealth: wartet, bis der Spieler wieder
+        /// auf voller Gesundheit ist (z.B. damit er die Heilung der Verteidigungskarte einmal
+        /// selbst ausprobiert). Springt automatisch weiter, sobald CurrentHealth == MaxHealth.
+        /// </summary>
+        private void HandleWaitForFullHealth()
+        {
+            if (_isTyping || player == null) return;
+
+            if (player.CurrentHealth >= player.MaxHealth)
+            {
+                ShowStep(_currentStepIndex + 1);
+            }
+        }
+
+        /// <summary>
         /// Erzeugt ein Bild, das sichtbar vom Todesort des Gegners zum Spieler fliegt und dort
         /// nach der übergebenen Flugzeit Schaden verursacht.
         /// </summary>
@@ -386,8 +430,9 @@ namespace RhythmWitchClone.Gameplay
                 return;
             }
 
-            _currentStepIndex = index;
             TutorialStep step = steps[index];
+
+            _currentStepIndex = index;
 
             if (dialoguePanel != null) dialoguePanel.SetActive(true);
             if (step.marker != null) step.marker.SetActive(true);
@@ -405,6 +450,14 @@ namespace RhythmWitchClone.Gameplay
             if (step.damageToApplyOnShow > 0 && player != null)
             {
                 player.TakeDamage(step.damageToApplyOnShow);
+            }
+
+            // Bei einem "Finish"-Schritt zusätzlich das Win-Panel öffnen - der Dialogtext läuft
+            // dabei ganz normal weiter, beides ist gleichzeitig sichtbar. Über den "Zurück zum
+            // Menü"-Button des Win-Panels kommt der Spieler dann in die Safe Zone.
+            if (step.advanceMode == StepAdvanceMode.Finish && player != null)
+            {
+                player.WinLevel();
             }
 
             _currentFullText = step.text ?? "";

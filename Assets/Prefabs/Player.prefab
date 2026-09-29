@@ -138,7 +138,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &8834838927338536426
 RectTransform:
   m_ObjectHideFlags: 0
@@ -5477,12 +5477,12 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
-  m_Type: 1
+  m_Sprite: {fileID: -246007451, guid: 61cc25a27c6fb9f47916446184b307e2, type: 3}
+  m_Type: 3
   m_PreserveAspect: 0
   m_FillCenter: 1
-  m_FillMethod: 4
-  m_FillAmount: 1
+  m_FillMethod: 0
+  m_FillAmount: 0
   m_FillClockwise: 1
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
@@ -8459,7 +8459,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &3490629504823330438
 RectTransform:
   m_ObjectHideFlags: 0
@@ -10478,11 +10478,11 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10905, guid: 0000000000000000f000000000000000, type: 0}
-  m_Type: 1
+  m_Sprite: {fileID: -360479645, guid: 61cc25a27c6fb9f47916446184b307e2, type: 3}
+  m_Type: 3
   m_PreserveAspect: 0
   m_FillCenter: 1
-  m_FillMethod: 4
+  m_FillMethod: 0
   m_FillAmount: 1
   m_FillClockwise: 1
   m_FillOrigin: 0
@@ -11305,16 +11305,6 @@ MonoBehaviour:
   auraDuration: 0.4
   auraNoteSprinkleCount: 8
   auraNoteSpriteScale: 0.7
-  defenseCardDamageReduction: 0.3
-  defenseCardHealAmount: 1
-  defenseCardHealInterval: 2
-  attackCardDamageBonus: 15
-  attackCardRadiusBonus: 1.5
-  specialShockwaveRadius: 5
-  specialKnockbackForce: 8
-  specialStunDuration: 10
-  specialShockwaveColor: {r: 1, g: 0.85, b: 0.2, a: 1}
-  specialShockwaveVisualDuration: 0.8
   projectilesEnabled: 0
   projectileTexture: {fileID: 2800000, guid: 20745ab38aa53d84abfc9610790d1cb1, type: 3}
   projectileSpeed: 12
@@ -11582,6 +11572,16 @@ MonoBehaviour:
   cardLiftDistance: 40
   cardLiftSpeed: 8
   specialCardPulseDuration: 0.3
+  defenseDamageReduction: 0.3
+  defenseHealAmount: 1
+  defenseHealInterval: 2
+  attackDamageBonus: 15
+  attackRadiusBonus: 1.5
+  specialShockwaveRadius: 5
+  specialKnockbackForce: 8
+  specialStunDuration: 10
+  specialShockwaveColor: {r: 1, g: 0.85, b: 0.2, a: 1}
+  specialShockwaveVisualDuration: 0.8
 --- !u!1 &9028628658074378828
 GameObject:
   m_ObjectHideFlags: 0

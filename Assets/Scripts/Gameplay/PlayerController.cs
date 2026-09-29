@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using TMPro;
 using RhythmWitchClone.Core;
@@ -34,6 +35,14 @@ namespace RhythmWitchClone.Gameplay
         [Header("Sprite-Spiegelung")]
         [Tooltip("Das Kind-Objekt mit dem sichtbaren Bild (Quad mit BillboardSprite-Script drauf).")]
         [SerializeField] private Transform visualTransform;
+
+        [Header("Mauszeiger")]
+        [Tooltip("Normaler Mauszeiger. Die Textur muss im Import auf Texture Type = 'Cursor' stehen (32x32 oder 64x64 empfohlen).")]
+        [SerializeField] private Texture2D cursorNormal;
+        [Tooltip("Mauszeiger beim Hovern über klickbare UI-Elemente (Buttons, Slider, etc.).")]
+        [SerializeField] private Texture2D cursorHover;
+        [Tooltip("Klickpunkt im Cursor-Bild, in Pixeln von oben links. Bei einem Fadenkreuz die Mitte eintragen (z.B. 16,16 bei 32x32).")]
+        [SerializeField] private Vector2 cursorHotspot = Vector2.zero;
 
         [Header("Gesundheit")]
         [SerializeField] private int maxHealth = 100;
@@ -192,6 +201,8 @@ namespace RhythmWitchClone.Gameplay
             if (winPanel != null) winPanel.SetActive(false);
             _winCheckTimer = winCheckDelay;
 
+            ApplyCursor(false);
+
             ApplyUpgrades();
             LoadFromSave();
         }
@@ -288,6 +299,7 @@ namespace RhythmWitchClone.Gameplay
             UpdateProjectiles();
             UpdateCoins();
             UpdateAuras();
+            UpdateCursor();
             CheckForLevelWin();
         }
 
@@ -766,6 +778,55 @@ namespace RhythmWitchClone.Gameplay
             }
         }
 
+        // Für die Hover-Erkennung - wiederverwendete Liste, damit nicht jeden Frame neuer
+        // Speicher alloziert wird.
+        private readonly List<RaycastResult> _cursorRaycastResults = new List<RaycastResult>();
+        private bool _isHoveringClickable;
+
+        /// <summary>
+        /// Prüft jeden Frame per UI-Raycast, ob die Maus über einem klickbaren Element (Button,
+        /// Slider, Toggle, Dropdown, Eingabefeld) steht, und wechselt entsprechend den Mauszeiger.
+        /// Funktioniert automatisch für JEDES klickbare UI im Spiel, ohne dass dort etwas
+        /// eingerichtet werden muss.
+        /// </summary>
+        private void UpdateCursor()
+        {
+            if (EventSystem.current == null || Mouse.current == null) return;
+
+            PointerEventData pointerData = new PointerEventData(EventSystem.current)
+            {
+                position = Mouse.current.position.ReadValue()
+            };
+
+            _cursorRaycastResults.Clear();
+            EventSystem.current.RaycastAll(pointerData, _cursorRaycastResults);
+
+            bool hoveringClickable = false;
+            foreach (RaycastResult result in _cursorRaycastResults)
+            {
+                Selectable selectable = result.gameObject.GetComponentInParent<Selectable>();
+                if (selectable != null && selectable.interactable)
+                {
+                    hoveringClickable = true;
+                    break;
+                }
+            }
+
+            // Nur bei einem tatsächlichen Wechsel neu setzen - Cursor.SetCursor jeden Frame
+            // aufzurufen kann auf manchen Systemen zu Flackern führen.
+            if (hoveringClickable != _isHoveringClickable)
+            {
+                _isHoveringClickable = hoveringClickable;
+                ApplyCursor(hoveringClickable);
+            }
+        }
+
+        private void ApplyCursor(bool hovering)
+        {
+            Texture2D texture = hovering ? cursorHover : cursorNormal;
+            Cursor.SetCursor(texture, cursorHotspot, CursorMode.Auto);
+        }
+
         private void HandleMovement()
         {
             float horizontal = GetHorizontalInput(); // A/D bzw. Pfeiltasten links/rechts
@@ -844,7 +905,12 @@ namespace RhythmWitchClone.Gameplay
             }
         }
 
-        private void WinLevel()
+        /// <summary>
+        /// Löst den Level-Sieg aus (Win-Panel öffnen, Level als geschafft markieren, Sound
+        /// abspielen). Public, damit auch TutorialManager das bei einem "Finish"-Schritt direkt
+        /// aufrufen kann, nicht nur die automatische Gegner-Zähl-Prüfung.
+        /// </summary>
+        public void WinLevel()
         {
             _hasWonLevel = true;
 
